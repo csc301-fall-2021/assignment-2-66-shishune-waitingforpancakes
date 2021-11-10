@@ -4,6 +4,7 @@ from flask import Flask, jsonify, request, send_from_directory, Response
 from flask_restful import Api, Resource, reqparse, abort, fields, marshal_with
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime 
+from dateutil import parser
 
 # Configure app, API and database
 app = Flask(__name__)
@@ -55,26 +56,6 @@ class DailyReportsModel(db.Model):
 # Create the database (should be run once)
 # db.create_all() 
 
-# Automatically parses through the request being sent and ensures it matches the guidelines
-# timeseries_args = reqparse.RequestParser()
-# timeseries_args.add_argument("type", type=str, help="Type of Statistic is Required.", required=True)
-# timeseries_args.add_argument("country_region", type=str, help="Country/Region of COVID Report.", required=True)
-# timeseries_args.add_argument("date", type=str, help="Date of COVID Report.", required=True)
-# timeseries_args.add_argument("time_series_type", type=str, help="Confirmed COVID Cases.", required=True)
-# timeseries_args.add_argument("time_series_type_value", type=int, help="Deaths from COVID.", required=True)
-
-# Defines how an object should be serialized
-resource_fields = {
-    'combined_key': fields.String,
-    'province_state': fields.String, 
-    'country_region': fields.String,
-    'date': fields.String,
-    'confirmed': fields.Integer,
-    'deaths': fields.Integer,
-    'recovered': fields.Integer,
-    'active': fields.Integer 
-}
-
 class TimeSeries(Resource):
     def post(self, time_series_type):
         # Convert CSV string to file-like object and parse through it using the headers
@@ -95,22 +76,27 @@ class TimeSeries(Resource):
                                                     province_state = province_state, \
                                                     country_region = country_region, \
                                                     date = attribute,\
-                                                    confirmed = row[attribute])
+                                                    confirmed = row[attribute], \
+                                                    active = 0)
                             db.session.add(report)
                         elif time_series_type == "deaths":
                             report = TimeSeriesModel(combined_key = province_state + country_region, \
                                                     province_state = province_state, \
                                                     country_region = country_region, \
                                                     date = attribute,\
-                                                    deaths = row[attribute])
+                                                    deaths = row[attribute], \
+                                                    active = 0)
                             db.session.add(report)
                         elif time_series_type == "recovered":
                             report = TimeSeriesModel(combined_key = province_state + country_region, \
                                                     province_state = province_state, \
                                                     country_region = country_region, \
                                                     date = attribute,\
-                                                    recovered = row[attribute])
+                                                    recovered = row[attribute], \
+                                                    active = 0)
                             db.session.add(report)
+                        else:
+                            abort(400, message="Incorrect Endpoint...")
                     else:
                         if time_series_type == "confirmed":
                             exists.confirmed = row[attribute]
@@ -129,42 +115,32 @@ class TimeSeries(Resource):
         except:
             abort(400, message="Report already made...")
 
-@app.route('/time_series/deaths/<int:id>', methods=['GET'])
-def time_series_query_deaths(id):
-    try:
-        result = TimeSeriesModel.query.all()
-        return result
-    except:
-        abort(404, message="Could not find any data...")
+# Automatically parses through the request being sent and ensures it matches the guidelines
+time_series_args = reqparse.RequestParser()
+time_series_args.add_argument("query_types", type=list, help="Query Type is Required.", required=True)
+time_series_args.add_argument("province_state", type=list, help="Province/State of COVID Reports.")
+time_series_args.add_argument("country_region", type=list, help="Country/Region of COVID Reports.")
+time_series_args.add_argument("combined_key", type=list, help="Country/Region of COVID Reports.")
+time_series_args.add_argument("date", type=str, help="Date of COVID Report.")
 
-@app.route('/time_series/confirmed/<int:id>', methods=['GET'])
-def time_series_query_confirmed(id):
+@app.route('/time_series/cases/', methods=['GET'])
+def time_series_query():
+    # add arguments and specify in README.md
+    args = time_series_args.parseargs()
     try:
-        result = TimeSeriesModel.query.all()
-        return result
-    except:
-        abort(404, message="Could not find any data...")
-
-@app.route('/time_series/active/<int:id>', methods=['GET'])
-def time_series_query_active(id):
-    try:
-        result = TimeSeriesModel.query.all()
-        return result
-    except:
-        abort(404, message="Could not find any data...")
-
-@app.route('/time_series/recovered/<int:id>', methods=['GET'])
-def time_series_query_recovered(id):
-    try:
-        result = TimeSeriesModel.query.all()
-        return result
-    except:
-        abort(404, message="Could not find any data...")
-
-@app.route('/time_series/period/<int:id>', methods=['GET'])
-def time_series_query_period(id):
-    try:
-        result = TimeSeriesModel.query.all()
+        result = []
+        
+        # 
+        for country in args['country_region']:
+            for province in args['province_state']:
+                result = set(result).union(TimeSeriesModel.query.filter(country_region=country, province_state=province).all())
+        
+        # 
+        for key in args['combined_key']:
+            result = set(result).union(TimeSeriesModel.query.filter(combined_key=key).all())
+        
+        # filter day and time period
+        
         return result
     except:
         abort(404, message="Could not find any data...")
@@ -226,81 +202,34 @@ class DailyReports(Resource):
     # active = db.Column(db.Integer, nullable=False)
         args = dailyreport_get_args.parse_args() 
         result = DailyReportsModel.query.all()
-        # print(result)
-        data = {}
-        i = 0
-        for report in result:
-            # if row is not None:
-            if report is not None: 
-                data[i] = {
-                    'combined_key': report.combined_key,
-                    'province_state': report.province_state,
-                    'country_region': report.country_region,
-                    'date': report.date,
-                    'confirmed': report.confirmed,
-                    'deaths': report.deaths,
-                    'recovered': report.recovered,
-                    'active': report.active
-                }
-                # print(data[i])
-                i += 1
 
-
-        filetype = args["filetype"]
-        # for i in data:
-        #     print(data[i])
-        
-        file_name = 'daily_report_query_results'
-        if filetype == "json":
-            file_type = '.json'
-            with open(file_path + file_name + file_type, 'w') as jsonfile:
-                json.dump(data, jsonfile)
-            # And then we write a final newline to the end of the file 
-            # (this is just a best practice)
-                jsonfile.write('\n')
-            try:
-                return send_from_directory(app.config["UPLOAD_FOLDER"], filename=file_name + file_type, as_attachment=True)
-            except FileNotFoundError:
-                abort(404, message="The file was not created")
-
-            return jsonfile
-        elif filetype == "csv":
-            file_type = '.csv'
-            file_location = os.path.join(app.config['UPLOAD_FOLDER'], file_name + file_type)
-            dataframe = pd.DataFrame.from_dict(data, orient='index')
-            print(dataframe)
-            csvdata = pd.DataFrame.to_csv(dataframe)
-            print(csvdata)
-
-            
-            # csvfile.save(file_location)
-            with open(file_path + file_name + file_type, 'w') as csvfile:
-                csvfile.write(csvdata)
-                # writer = csv.writer(csvfile) #, delimiter=' ')
-                # writer.writerow(csvdata)
-            # with open(file_path + file_name + file_type, 'w') as jsonfile:
-            #     json.dump(data, jsonfile)
-            # # And then we write a final newline to the end of the file 
-            # # (this is just a best practice)
-            #     jsonfile.write('\n')
-            try:
-                return send_from_directory(app.config["UPLOAD_FOLDER"], filename=file_name + file_type, as_attachment=True)
-
-            except FileNotFoundError:
-                abort(404, message="The file was not created")
-        else:
-            abort(404, message="File type not available. Must be csv or json") 
-        # if args['combined_key']:
-        #     print("you have asked for something!")
-        #     result = DailyReportsModel.query.intersect(result, \
-        #         DailyReportsModel.query.filter_by(combined_key=args['combined_key']).all())
+        if args['combined_key']:
+            print("you have asked for something!")
+            result = set(DailyReportsModel.query.filter_by(combined_key=args['combined_key']).all())\
+                .intersectioin(result)
+            # DailyReportsModel.query.intersect(result, \
+                # 
         # name=args['combined_key']
-        
-        # Sketch solution
-        if not result:
-            abort(404, message="Could not find video with that ID...")
-        return result
+        if args['province_state']:
+            print("you have asked for something!")
+            result = set(DailyReportsModel.query.filter_by(province_state=args['province_state']))\
+                .intersect(result)
 
+        if args['country_region']:
+            print("you have asked for something!")
+            result = set(DailyReportsModel.query.filter_by(country_region=args['country_region']).all())\
+                .intersection(result)
+        
+        if args['date']:
+            print("you have asked for something!")
+            result = DailyReportsModel.query.filter_by(date=args['date']).all()\
+                .intersect(result)
+                
+        # print(result)
+        filetype = args["filetype"]
+        file_name = 'daily_report_query_results'
+        return export_query(result, file_name, filetype)
+        
 
 
     @marshal_with(daily_resource_fields)
@@ -330,7 +259,7 @@ class DailyReports(Resource):
             # a set of date keys with the value as a dictionary of
             # different data elements from the CSV.
             dailyReport = DailyReportsModel(combined_key = row["Combined_Key"],
-                date = row["Last_Update"],
+                date = row["Last_Update"].split()[0],
                 province_state = row["Province_State"],
                 country_region = row["Country_Region"],
                 confirmed = row["Confirmed"],
@@ -387,7 +316,7 @@ class DailyReports(Resource):
         
 
     # Standard for updating, although there's also an update method?
-    @marshal_with(resource_fields)
+    @marshal_with(daily_resource_fields)
     def patch(self, video_id):
         args = video_update_args.parse_args()
         result = VideoModel.query.filter_by(id=video_id).first()
@@ -422,7 +351,56 @@ def attrNotNull(dailyReport):
 
 # @app.route('/clear', methods=['DELETE'])
 # def clear():
-    
+
+def export_query(result, file_name, filetype):
+    data = {}
+    i = 0
+    for report in result:
+        if report is not None: 
+            
+            data[i] = {
+                'combined_key': report.combined_key,
+                'province_state': report.province_state,
+                'country_region': report.country_region,
+                'date': report.date,
+                'confirmed': report.confirmed,
+                'deaths': report.deaths,
+                'recovered': report.recovered,
+                'active': report.active
+            }
+            # print(data[i])
+            i += 1
+
+    if filetype == "json":
+        file_type = '.json'
+        with open(file_path + file_name + file_type, 'w') as jsonfile:
+            json.dump(data, jsonfile)
+        # And then we write a final newline to the end of the file 
+        # (this is just a best practice)
+            jsonfile.write('\n')
+        try:
+            return send_from_directory(app.config["UPLOAD_FOLDER"], filename=file_name + file_type, as_attachment=True)
+        except FileNotFoundError:
+            abort(404, message="The file was not created")
+
+    elif filetype == "csv":
+        file_type = '.csv'
+        dataframe = pd.DataFrame.from_dict(data, orient='index')
+        # print(dataframe)
+        csvdata = pd.DataFrame.to_csv(dataframe)
+        # print(csvdata)
+        
+        # csvfile.save(file_location)
+        with open(file_path + file_name + file_type, 'w') as csvfile:
+            csvfile.write(csvdata)
+
+        try:
+            return send_from_directory(app.config["UPLOAD_FOLDER"], filename=file_name + file_type, as_attachment=True)
+
+        except FileNotFoundError:
+            abort(404, message="The file was not created")
+    else:
+        abort(404, message="File type not available. Must be csv or json")  
 
 
 # Register resources
