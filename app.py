@@ -117,11 +117,13 @@ class TimeSeries(Resource):
 
 # Automatically parses through the request being sent and ensures it matches the guidelines
 time_series_args = reqparse.RequestParser()
-time_series_args.add_argument("query_types", type=list, help="Query Type is Required.", required=True)
+time_series_args.add_argument("filetype", type=str, help="Return filetype.", required=True)
+time_series_args.add_argument("query_type", type=str, help="Query Type is Required.", required=True)
 time_series_args.add_argument("province_state", type=list, help="Province/State of COVID Reports.")
 time_series_args.add_argument("country_region", type=list, help="Country/Region of COVID Reports.")
 time_series_args.add_argument("combined_key", type=list, help="Country/Region of COVID Reports.")
-time_series_args.add_argument("date", type=str, help="Date of COVID Report.")
+time_series_args.add_argument("start_date", type=str, help="Date of COVID Report.")
+time_series_args.add_argument("end_date", type=str, help="Date of COVID Report.")
 
 @app.route('/time_series/cases/', methods=['GET'])
 def time_series_query():
@@ -130,18 +132,52 @@ def time_series_query():
     try:
         result = []
         
-        # 
+        # Find queries with every combination of country/region and province/state
         for country in args['country_region']:
             for province in args['province_state']:
                 result = set(result).union(TimeSeriesModel.query.filter(country_region=country, province_state=province).all())
         
-        # 
+        # Find queries with combined_key
         for key in args['combined_key']:
             result = set(result).union(TimeSeriesModel.query.filter(combined_key=key).all())
         
-        # filter day and time period
-        
-        return result
+        # Find queries in specified timespan
+        if args['start_date'] is not None and args['end_date'] is not None:
+            start_day, start_month, start_year = args['start_date'].split('/')
+            end_day, end_month, end_year = args['end_date'].split('/')
+            if datetime.datetime(start_year, start_month, start_day) > \
+                datetime.datetime(end_year, end_month, end_day):
+                abort(400, message="Bad date times")
+            for row in TimeSeriesModel.query.all():
+                pass
+            result = set(result).intersection(TimeSeriesModel.query.all())
+
+        # Select columns
+        if args['query_type'] == "confirmed":
+            result.with_entities(TimeSeriesModel.province_state, \
+                                TimeSeriesModel.country_region, \
+                                TimeSeriesModel.combined_key, \
+                                TimeSeriesModel.confirmed)
+        elif args['query_type'] == "deaths":
+            result.with_entities(TimeSeriesModel.province_state, \
+                                TimeSeriesModel.country_region, \
+                                TimeSeriesModel.combined_key, \
+                                TimeSeriesModel.deaths)
+        elif args['query_type'] == "recovered":
+            result.with_entities(TimeSeriesModel.province_state, \
+                                TimeSeriesModel.country_region, \
+                                TimeSeriesModel.combined_key, \
+                                TimeSeriesModel.recovered)
+        elif args['query_type'] == "active":
+            result.with_entities(TimeSeriesModel.province_state, \
+                                TimeSeriesModel.country_region, \
+                                TimeSeriesModel.combined_key, \
+                                TimeSeriesModel.active)
+
+        if args['filetype'] in ['csv', 'json']:
+            return export_query(result, "placeholder", args['filetype'])
+        else:
+            abort(400, message="Incorrect File Type")
     except:
         abort(404, message="Could not find any data...")
 
