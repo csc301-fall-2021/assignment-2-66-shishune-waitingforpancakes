@@ -8,20 +8,23 @@ from dateutil.parser import ParserError, parse
 # Configure app, API and database
 app = Flask(__name__)
 api = Api(app)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db' 
+# app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db' 
+# # app.config['SQLALCHEMY_DATABASE_URI'] = 'postgres://hxbliqhycjirgb:7a3f47c7cc57c32707ad2e4f26aaf11c2dac716d2e9a20ebab1f4e13c88efee4@ec2-107-20-127-127.compute-1.amazonaws.com:5432/de9htre82pv157'
+# db = SQLAlchemy(app)
+# # create = True
+# Imports
+
+# ENV = 'dev'
+
+# if ENV == 'dev':
+#     app.debug = True
+#     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
+# else:
+#     app.debug = False
+#     app.config['SQLALCHEMY_DATABASE_URI'] = 'postgres://hxbliqhycjirgb:7a3f47c7cc57c32707ad2e4f26aaf11c2dac716d2e9a20ebab1f4e13c88efee4@ec2-107-20-127-127.compute-1.amazonaws.com:5432/de9htre82pv157'
 db = SQLAlchemy(app)
-create = True
-
-if create:
-    db.create_all()
-    create = False
-
 
 encoding = 'utf-8' 
-
-@app.route('/hello', methods=['POST', 'GET']) 
-def index():
-    return 'Hello! :)'
 
 # Database tables
 class TimeSeriesModel(db.Model):
@@ -61,8 +64,6 @@ class DailyReportsModel(db.Model):
             date = {self.date}, \
             confirmed = {self.confirmed}, deaths = {self.deaths},\
             recovered = {self.recovered}, active = {self.active})"
-
-
 
 class TimeSeries(Resource):
     def post(self, time_series_type):
@@ -203,7 +204,7 @@ def time_series_query():
                 datetime.date(row_year, row_month, row_day) <= end_date:
                 timespan = set(timespan).union(set([row]))
         result = set(result).intersection(set(timespan))
-        
+
     # Select specified columns
     select_calls = {}
     
@@ -400,7 +401,7 @@ def attrNotNull(dailyReport):
     return True
 
 file_path = "./tmp/"
-UPLOAD_DIRECTORY = "/tmp"
+UPLOAD_DIRECTORY = "tmp"
 UPLOAD_FOLDER = UPLOAD_DIRECTORY
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
@@ -442,7 +443,7 @@ def export_query(result, select_calls, file_name, filetype):
         # (this is just a best practice)
             jsonfile.write('\n')
         try:
-            return send_from_directory(UPLOAD_DIRECTORY, filename=file_name + file_type, as_attachment=True)
+            return send_from_directory(app.config["UPLOAD_FOLDER"], filename=file_name + file_type, as_attachment=True)
         except FileNotFoundError:
             abort(404, message="The file was not created")
 
@@ -479,4 +480,6 @@ api.add_resource(DailyReports, "/daily_reports/")
 
 if __name__ == "__main__":
     # Only debug in an development environment (not a production environment)
-    app.run(debug=False) 
+    app.run()
+    # from waitress import serve
+    # serve(app, host="0.0.0.0", port=8080) 

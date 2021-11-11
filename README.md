@@ -82,4 +82,8 @@ Design
             - Query with no countries/regions, provinces/states, combined_keys specified
             - Query with no time period specified
     - Daily Reports
+        - POST:
+            - 
+        - GET:
+            - 
     
