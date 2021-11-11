@@ -10,6 +10,12 @@ app = Flask(__name__)
 api = Api(app)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db' 
 db = SQLAlchemy(app)
+create = True
+
+if create:
+    db.create_all()
+    create = False
+
 
 encoding = 'utf-8' 
 
@@ -55,6 +61,8 @@ class DailyReportsModel(db.Model):
             date = {self.date}, \
             confirmed = {self.confirmed}, deaths = {self.deaths},\
             recovered = {self.recovered}, active = {self.active})"
+
+
 
 class TimeSeries(Resource):
     def post(self, time_series_type):
