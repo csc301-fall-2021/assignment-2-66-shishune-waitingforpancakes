@@ -3,6 +3,7 @@ import datetime, csv, json, os, io, pandas as pd
 from flask import Flask, jsonify, request, send_from_directory
 from flask_restful import Api, Resource, reqparse, abort, fields, marshal_with
 from flask_sqlalchemy import SQLAlchemy
+from dateutil.parser import ParserError, parse
 
 # Configure app, API and database
 app = Flask(__name__)
@@ -51,22 +52,37 @@ class DailyReportsModel(db.Model):
             confirmed = {self.confirmed}, deaths = {self.deaths},\
             recovered = {self.recovered}, active = {self.active})"
 
-# Create the database (should be run once)
-# db.create_all() 
-
 class TimeSeries(Resource):
     def post(self, time_series_type):
         # Convert CSV string to file-like object and parse through it using the headers
         csvfile = io.StringIO(request.data.decode("UTF8"), newline=None)
         reader = csv.DictReader(csvfile)
-
+        
+        # Put each row from the given csv file into our relation
         for row in reader:
-            province_state = row["Province/State"]
-            country_region = row["Country/Region"]
+
+            # Read the COVID report place
+            try:
+                province_state = row["Province/State"]
+                country_region = row["Country/Region"]
+            except:
+                abort(400, message="File does not have named columns Province/State or Country/Region")
+            
+            # Read the COVID report dates
             for attribute in reader.fieldnames:
                 if attribute not in ["Province/State", "Country/Region", "Lat", "Long"]:
-                    if (province_state + country_region) is None or attribute is None:
-                        abort(400, message="Type of report not specified...")
+                    
+                    # Check required key values
+                    if country_region is None:
+                        abort(400, message="File does not have required field Country/Region")
+                    try:
+                        attribute_date = attribute.split('/')
+                        attribute_month, attribute_day, attribute_year = int(attribute_date[0]), int(attribute_date[1]), int("20"+attribute_date[2])
+                        datetime.date(attribute_year, attribute_month, attribute_day)
+                    except:
+                        abort(400, message="File includes an ill-named column or an improper date")
+
+                    # Check whether we are creating a new resource or updating an existing resource
                     exists = TimeSeriesModel.query.filter_by(combined_key=province_state + country_region, date=attribute).first()
                     if exists is None:           
                         if time_series_type == "confirmed":
@@ -94,7 +110,7 @@ class TimeSeries(Resource):
                                                     active = 0)
                             db.session.add(report)
                         else:
-                            abort(400, message="Incorrect Endpoint...")
+                            abort(400, message="Incorrect Specified Endpoint...")
                     else:
                         if time_series_type == "confirmed":
                             exists.confirmed = row[attribute]
@@ -111,16 +127,11 @@ class TimeSeries(Resource):
             db.session.commit()
             return 201 # successful
         except:
-            abort(400, message="Report already made...")
-
-    # def delete(self):
-    #     db.session.query(TimeSeriesModel).delete() 
-    #     db.session.commit()
+            abort(500, message="Could not add csv file content...")
 
 # Automatically parses through the request being sent and ensures it matches the guidelines
 time_series_args = reqparse.RequestParser()
 time_series_args.add_argument("filetype", type=str, help="Return filetype.", required=True)
-# time_series_args.add_argument("query_type", type=str, help="Query Type is Required.", required=True)
 time_series_args.add_argument("province_state", type=str, action="append", help="Province/State of COVID Reports.")
 time_series_args.add_argument("country_region", type=str, action="append", help="Country/Region of COVID Reports.")
 time_series_args.add_argument("combined_key", type=str, action="append", help="Country/Region of COVID Reports.")
@@ -135,79 +146,72 @@ time_series_args.add_argument("recovered", type=bool, help="Recovered from COVID
 def time_series_query():
     # Load user request arguments 
     args = time_series_args.parse_args()
-    try:
-        places = []
-        if not args['combined_key'] and not args['province_state'] and  \
+
+    places = []
+    if not args['combined_key'] and not args['province_state'] and  \
         not args['country_region']:
-            print("You asked for everything")
+        try:
             places = TimeSeriesModel.query.all()
+        except:
+            abort(404, message="No data found...")
         
-        # print("places",places)
-        # Find queries with every combination of country/region and province/state
-        if args['country_region'] is not None:
-            for country in args['country_region']:
-                if args['province_state'] is not None:
-                    for province in args['province_state']:
-                        places = set(places).union(set(TimeSeriesModel.query.filter_by(country_region=country, province_state=province).all()))
-                places = set(places).union(set(TimeSeriesModel.query.filter_by(country_region=country).all()))
+    # Find queries with every combination of country/region and province/state
+    if args['country_region'] is not None:
+        for country in args['country_region']:
+            if args['province_state'] is not None:
+                for province in args['province_state']:
+                    places = set(places).union(set(TimeSeriesModel.query.filter_by(country_region=country, province_state=province).all()))
+            places = set(places).union(set(TimeSeriesModel.query.filter_by(country_region=country).all()))
 
-        # Find queries with combined_key
-        if args['combined_key'] is not None:
-            for key in args['combined_key']:
-                places = set(places).union(set(TimeSeriesModel.query.filter_by(combined_key=key).all()))
+    # Find queries with combined_key
+    if args['combined_key'] is not None:
+        for key in args['combined_key']:
+            places = set(places).union(set(TimeSeriesModel.query.filter_by(combined_key=key).all()))
         
-        result = places
-        # Find queries in specified timespan
-        if args['start_date'] is not None and args['end_date'] is not None:
-            timespan = []
-            start_date = args['start_date'].split('/')
-            start_month, start_day, start_year = int(start_date[0]), int(start_date[1]), int("20"+start_date[2])
-            end_date = args['end_date'].split('/')
-            end_month, end_day, end_year = int(end_date[0]), int(end_date[1]), int("20"+end_date[2])
-            if datetime.date(start_year, start_month, start_day) > \
-                datetime.date(end_year, end_month, end_day):
-                abort(400, message="Bad date times")
-            for row in TimeSeriesModel.query.all():
-                row_date = row.date.split('/')
-                row_month, row_day, row_year = int(row_date[0]), int(row_date[1]), int("20"+row_date[2])
-                if datetime.date(start_year, start_month, start_day) <= \
-                    datetime.date(row_year, row_month, row_day) and \
-                    datetime.date(row_year, row_month, row_day) <= \
-                    datetime.date(end_year, end_month, end_day):
-                    timespan = set(timespan).union(set([row]))
-            result = set(result).intersection(set(timespan))
-        
-        # Select columns
-        final_result = {}
-        i = 0
-        for model in result:
-            model_dict = {"province_state": model.province_state, \
-                        "country_region": model.country_region, \
-                        "combined_key": model.combined_key, \
-                        "date": model.date}
+    result = places
 
-            if args['confirmed']:
-                model_dict["confirmed"] = model.confirmed
+    # Find queries in specified timespan
+    if args['start_date'] is not None and args['end_date'] is not None:
+        timespan = []
+        try:
+            start_string = args['start_date'].split('/')
+            start_month, start_day, start_year = int(start_string[0]), int(start_string[1]), int("20"+start_string[2])
+            end_string = args['end_date'].split('/')
+            end_month, end_day, end_year = int(end_string[0]), int(end_string[1]), int("20"+end_string[2])
+            start_date = datetime.date(start_year, start_month, start_day)
+            end_date = datetime.date(end_year, end_month, end_day)
+        except:
+            abort(400, message="Dates formatted incorrectly or improper date")
+        if start_date > end_date:
+            abort(403, message="Cannot have a negative time span")
+        for row in TimeSeriesModel.query.all():
+            row_date = row.date.split('/')
+            row_month, row_day, row_year = int(row_date[0]), int(row_date[1]), int("20"+row_date[2])
+            if start_date <= datetime.date(row_year, row_month, row_day) and \
+                datetime.date(row_year, row_month, row_day) <= end_date:
+                timespan = set(timespan).union(set([row]))
+        result = set(result).intersection(set(timespan))
+        
+    # Select specified columns
+    select_calls = {}
     
-            if  args['deaths']:
-                model_dict["deaths"] = model.deaths
-                
-            if args['recovered']:
-                model_dict["recovered"] = model.recovered
+    if args['confirmed']:
+        select_calls['confirmed'] =  args['confirmed']
+    if args['deaths']:
+        select_calls['deaths'] =  args['deaths']
+    if args['active']:
+        select_calls['active'] =  args['active']
+    if args['recovered']:
+        select_calls['recovered'] =  args['recovered']
 
-            if args['active']:
-                model_dict["active"] = model.deaths
-
-            final_result[i] = model_dict
-            i += 1
-
-        if args['filetype'] in ['csv', 'json']:
-            return export_query(final_result, "time_series_query_results", args['filetype'])
-        else:
-            abort(400, message="Incorrect File Type")
-    except:
-        abort(404, message="Could not find any data...") 
-    
+    # Export query results
+    if args['filetype'] in ['csv', 'json']:
+        try:
+            return export_query(result, select_calls, "time_series_query_results", args['filetype']), 200
+        except:
+            abort(500, message="Could not export query results...")
+    else:
+        abort(400, message="Incorrect Specified File Type...")  
 
 # Defines how an object should be serialized
 daily_resource_fields = {
@@ -225,14 +229,6 @@ daily_csv_fieldnames = ("FIPS", "Admin2",  	"Province_State", "Country_Region", 
  	"Lat", "Long_", "Confirmed", "Deaths", "Recovered", "Active", "Combined_Key", \
     "Incidence_Rate", "Case-Fatality_Ratio")
 
-file_path = "./tmp/"
-UPLOAD_DIRECTORY = "tmp"
-UPLOAD_FOLDER = UPLOAD_DIRECTORY
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-
-if not os.path.exists(UPLOAD_DIRECTORY):
-    os.makedirs(UPLOAD_DIRECTORY)
-
 # app.config["CLIENT_CSV"] = "E:/AudiotoText/Flask_File_Downloads/filedownload/files/csv"
 
 class DailyReports(Resource):
@@ -245,10 +241,9 @@ class DailyReports(Resource):
         print("decoding!")
         # skip header
         header = next(csvfile)
-        if header != "FIPS,Admin2,Province_State,Country_Region,Last_Update,Lat,Long_,\
-            Confirmed,Deaths,Recovered,Active,Combined_Key,Incident_Rate,Case_Fatality_Ratio":
+        if header != "FIPS,Admin2,Province_State,Country_Region,Last_Update,Lat,Long_,Confirmed,Deaths,Recovered,Active,Combined_Key,Incident_Rate,Case_Fatality_Ratio\n":
             # return 400
-            abort(400, message='File is not formatted properly')  
+            abort(400, message='File header is not formatted properly')  
         
         reader = csv.DictReader(csvfile, daily_csv_fieldnames)
         print("reader is reading")
@@ -256,6 +251,7 @@ class DailyReports(Resource):
         for row in reader:
             input_key = row["Combined_Key"]
             input_date = row["Last_Update"].split()[0].strip()
+            formatted_date = parse(input_date).date()
             input_prov = row["Province_State"]
             input_country = row["Country_Region"]
             input_confirmed = row["Confirmed"]
@@ -264,7 +260,7 @@ class DailyReports(Resource):
             input_active = row["Active"]
 
             dailyReport = DailyReportsModel(combined_key = input_key,
-                date = input_date,
+                date = formatted_date,
                 province_state = input_prov,
                 country_region = input_country,
                 confirmed = input_confirmed,
@@ -303,7 +299,10 @@ class DailyReports(Resource):
                     if result.active != dailyReport.active:
                         result.active = dailyReport.active
 
-        db.session.commit()
+        try:
+            db.session.commit()
+        except:
+            return 400, 'Could not commit'
         return 200 # successful
 
     def delete(self):
@@ -337,8 +336,8 @@ def query_daily_reports():
         result = DailyReportsModel.query.all()
 
     if args['combined_key']:
-        for arg_key in args['combined_key'].split(','):
-            arg_key = arg_key.lstrip().rstrip()
+        for arg_key in args['combined_key'].split("'"):
+            arg_key = arg_key.replace("\"", "").lstrip().rstrip()
             result = set(result).union(DailyReportsModel.query.filter_by(combined_key=arg_key).all())
 
     if args['province_state']:
@@ -348,43 +347,32 @@ def query_daily_reports():
 
     if args['country_region']:
         for arg_country in args['country_region'].split(','):
-            arg_country = arg_country.lstrip().rstrip()
-            print(arg_country)
-            
+            arg_country = arg_country.lstrip().rstrip()            
             result = set(result).union(DailyReportsModel.query.filter_by(country_region=arg_country).all())
     
     if args['date']:
         for arg_date in args['date'].split(','):
-            arg_date = arg_date.lstrip().rstrip()
-            result = set(result).union(DailyReportsModel.query.filter_by(date=arg_date).all())
-    
-    final_result = {}
-    i = 0
-    for model in result:
-        model_dict = {"province_state": model.province_state, \
-                                "country_region": model.country_region, \
-                                "combined_key": model.combined_key, \
-                                "date":model.date}
+            try:
+                input_date = parse(arg_date).date()
+            except ParserError: 
+                abort(400,  message='Date invalid') # TODO 
+            result = set(result).union(DailyReportsModel.query.filter_by(date=input_date).all())
+        
 
-        if args['confirmed']:
-            model_dict["confirmed"] = model.confirmed
- 
-        if  args['deaths']:
-            model_dict["deaths"] = model.deaths
-            
-        if args['recovered']:
-            model_dict["recovered"] = model.recovered
-
-        if args['active']:
-            model_dict["active"] = model.deaths
-
-        final_result[i] = model_dict
-        i += 1
+    select_calls = {}
+    if args['confirmed']:
+        select_calls['confirmed'] =  args['confirmed']
+    if args['deaths']:
+        select_calls['deaths'] =  args['deaths']
+    if args['active']:
+        select_calls['active'] =  args['active']
+    if args['recovered']:
+        select_calls['recovered'] =  args['recovered']
 
     file_name = 'daily_report_query_results'
 
     if args['filetype'] in ['csv', 'json']:
-        return export_query(final_result, file_name, args['filetype'])
+        return export_query(result, select_calls, file_name, args['filetype'])
     else:
         abort(400, message="Incorrect File Type")
 
@@ -399,8 +387,40 @@ def attrNotNull(dailyReport):
         return False
     return True
 
-def export_query(result, file_name, filetype):
-    data = result
+file_path = "./tmp/"
+UPLOAD_DIRECTORY = "tmp"
+UPLOAD_FOLDER = UPLOAD_DIRECTORY
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+if not os.path.exists(UPLOAD_DIRECTORY):
+    os.makedirs(UPLOAD_DIRECTORY)
+
+def export_query(result, select_calls, file_name, filetype):
+    final_result = {}
+    i = 0
+    for model in result:
+        model_dict = {"province_state": model.province_state, \
+                    "country_region": model.country_region, \
+                    "combined_key": model.combined_key, \
+                    "date":model.date}
+
+        if 'confirmed' in select_calls:
+            model_dict["confirmed"] = model.confirmed
+ 
+        if  'deaths' in select_calls:
+            model_dict["deaths"] = model.deaths
+            
+        if 'recovered' in select_calls:
+            model_dict["recovered"] = model.recovered
+
+        if 'active' in select_calls:
+            model_dict["active"] = model.deaths
+
+        final_result[i] = model_dict
+        i += 1
+    
+    data = final_result
+
     print("exporting")
     if filetype == "json":
         file_type = '.json'
