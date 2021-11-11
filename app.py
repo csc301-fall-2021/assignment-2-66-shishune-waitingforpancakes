@@ -467,4 +467,4 @@ api.add_resource(DailyReports, "/daily_reports/")
 
 if __name__ == "__main__":
     # Only debug in an development environment (not a production environment)
-    app.run(debug=True) 
+    app.run(debug=False) 
