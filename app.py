@@ -13,6 +13,10 @@ db = SQLAlchemy(app)
 
 encoding = 'utf-8' 
 
+@app.route('/hello', methods=['POST', 'GET']) 
+def index():
+    return 'Hello! :)'
+
 # Database tables
 class TimeSeriesModel(db.Model):
     combined_key = db.Column(db.String(100), primary_key=True)  
@@ -388,7 +392,7 @@ def attrNotNull(dailyReport):
     return True
 
 file_path = "./tmp/"
-UPLOAD_DIRECTORY = "tmp"
+UPLOAD_DIRECTORY = "/tmp"
 UPLOAD_FOLDER = UPLOAD_DIRECTORY
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
@@ -430,7 +434,7 @@ def export_query(result, select_calls, file_name, filetype):
         # (this is just a best practice)
             jsonfile.write('\n')
         try:
-            return send_from_directory(app.config["UPLOAD_FOLDER"], filename=file_name + file_type, as_attachment=True)
+            return send_from_directory(UPLOAD_DIRECTORY, filename=file_name + file_type, as_attachment=True)
         except FileNotFoundError:
             abort(404, message="The file was not created")
 
