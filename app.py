@@ -8,20 +8,16 @@ from dateutil.parser import ParserError, parse
 # Configure app, API and database
 app = Flask(__name__)
 api = Api(app)
-# app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db' 
-# # app.config['SQLALCHEMY_DATABASE_URI'] = 'postgres://hxbliqhycjirgb:7a3f47c7cc57c32707ad2e4f26aaf11c2dac716d2e9a20ebab1f4e13c88efee4@ec2-107-20-127-127.compute-1.amazonaws.com:5432/de9htre82pv157'
-# db = SQLAlchemy(app)
-# # create = True
-# Imports
 
-# ENV = 'dev'
+ENV = 'prod'
 
-# if ENV == 'dev':
-#     app.debug = True
-#     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
-# else:
-#     app.debug = False
-#     app.config['SQLALCHEMY_DATABASE_URI'] = 'postgres://hxbliqhycjirgb:7a3f47c7cc57c32707ad2e4f26aaf11c2dac716d2e9a20ebab1f4e13c88efee4@ec2-107-20-127-127.compute-1.amazonaws.com:5432/de9htre82pv157'
+if ENV == 'dev':
+    app.debug = True
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
+else:
+    app.debug = False
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'postgres://hxbliqhycjirgb:7a3f47c7cc57c32707ad2e4f26aaf11c2dac716d2e9a20ebab1f4e13c88efee4@ec2-107-20-127-127.compute-1.amazonaws.com:5432/de9htre82pv157'
+
 db = SQLAlchemy(app)
 
 encoding = 'utf-8' 
