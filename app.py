@@ -217,7 +217,6 @@ def time_series_query():
             abort(404, message="No data found...")
         
     # Find queries with every combination of country/region and province/state
-    # TODO I HAVE UNNESTED YOUR CODE!!! @GRACE
     if args['country_region'] is not None:
         for country in args['country_region']:
             places.extend(filter_country(country, TimeSeriesDB))
@@ -421,7 +420,7 @@ def query_daily_reports():
             try:
                 input_date = parse(arg_date).date().strftime("%Y/%m/%d")
             except ParserError: 
-                abort(400,  message='Date invalid') # TODO 
+                abort(400,  message='Date invalid') 
             result.extend(filter_date(input_date, DailyReportsDB))
         
     result = set(result)

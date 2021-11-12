@@ -408,6 +408,18 @@ class DailyReportTests(unittest.TestCase):
         r = requests.get(daily_reports_url+"cases", data=get_data)
         self.assertTrue(r.status_code == 200)
 
+    def test_daily_report_get_no_file_type(self):
+        local_file_to_send = os.path.dirname(dirname(dirname(os.getcwd()))) + "/Downloads/csse_covid_19_data/dailyquery.csv"
+        data = open(local_file_to_send, "rb")
+        response = requests.post(daily_reports_url, data=data)
+        data.close()
+        self.assertTrue(response.status_code == 200)
+
+        get_data = {}
+
+        r = requests.get(daily_reports_url+"cases", data=get_data)
+        self.assertTrue(r.status_code == 400)
+
         
 if __name__ == '__main__':
     unittest.main()
