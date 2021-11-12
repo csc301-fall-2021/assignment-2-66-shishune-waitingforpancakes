@@ -307,7 +307,10 @@ class DailyReports(Resource):
         
         for row in reader:
             input_key = row["Combined_Key"]
-            input_date = row["Last_Update"].split()[0].strip()
+            try:
+                input_date = row["Last_Update"].split()[0].strip()
+            except IndexError:
+                abort(400, message='Date not valid or formatted improperly') 
             formatted_date = parse(input_date).date()
             input_prov = row["Province_State"]
             input_country = row["Country_Region"]
