@@ -83,9 +83,11 @@ Design
             - Query with no time period specified
     - Daily Reports
         - POST:
-            - Missing column names (no Province/State column, no Country/Region column)
-            - Incorrect column names (Long_ instead of Long, improper date, poorly formatted date)
+            - Improperly formatted column headers
+            - Missing column header 
             - Missing cell values (no keys, no dates, no country/province, no confirmed/deaths/active/recovered)
+            - Poorly formatted date, illegal date
+            - Properly formatted file
         - GET:
             - Query all data for deaths, confirmed, recovered, and active
             - Query all data for one of each; deaths, confirmed, recovered, and active
