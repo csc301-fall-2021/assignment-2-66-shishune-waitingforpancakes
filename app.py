@@ -56,7 +56,7 @@ class DailyReportsModel():
     combined_key = str  
     province_state = str
     country_region = str
-    date = None
+    date = str
     confirmed = int
     deaths = int
     recovered = int
@@ -107,18 +107,17 @@ def filter_province(province, db):
     query = []
     for report in db:
         if report.province_state == province:
-            query.add(report)
+            query.append(report)
     return query
 
 class TimeSeries(Resource):
     def post(self, time_series_type):
         # Convert CSV string to file-like object and parse through it using the headers
-        csvfile = io.StringIO(request.data.decode("UTF8"), newline=None)
+        csvfile = io.StringIO(request.data.decode('utf-8'), newline=None)
         reader = csv.DictReader(csvfile)
-        
+
         # Put each row from the given csv file into our relation
         for row in reader:
-
             # Read the COVID report place
             try:
                 province_state = row["Province/State"]
@@ -131,7 +130,7 @@ class TimeSeries(Resource):
                 if attribute not in ["Province/State", "Country/Region", "Lat", "Long"]:
                     
                     # Check required key values
-                    if country_region is None:
+                    if country_region.strip() == "" or country_region is None:
                         abort(400, message="File does not have required field Country/Region")
                     try:
                         attribute_date = attribute.split('/')
@@ -142,42 +141,50 @@ class TimeSeries(Resource):
 
                     # Check whether we are creating a new resource or updating an existing resource
                     exists = find_key_date(province_state + country_region, attribute, TimeSeriesDB) 
-
-                    if exists is None:     
-                        report = TimeSeriesModel(province_state + country_region, attribute)
-                        report.province_state = province_state
-                        report.country_region = country_region
-                        if time_series_type == "confirmed":
-                            report.confirmed = row[attribute]
-                            report.active = 0
-                            TimeSeriesDB.append(report)
-                        elif time_series_type == "deaths":
-                            report.deaths = row[attribute]
-                            report.active = 0
-                            TimeSeriesDB.append(report)
-                        elif time_series_type == "recovered":
-                            report.recovered = row[attribute]
-                            report.active = 0
-                            TimeSeriesDB.append(report)
+                    if row[attribute] is not None:
+                        if exists is None:     
+                            report = TimeSeriesModel(province_state + country_region, attribute)
+                            report.province_state = province_state
+                            report.country_region = country_region
+                            try:
+                                int(row[attribute])
+                                if time_series_type == "confirmed":
+                                    report.confirmed = int(row[attribute])
+                                    report.active = 0
+                                    TimeSeriesDB.append(report)
+                                elif time_series_type == "deaths":
+                                    report.deaths = int(row[attribute])
+                                    report.active = 0
+                                    TimeSeriesDB.append(report)
+                                elif time_series_type == "recovered":
+                                    report.recovered = int(row[attribute])
+                                    report.active = 0
+                                    TimeSeriesDB.append(report)
+                                else:
+                                    abort(400, message="Incorrect Specified Endpoint...")
+                            except:
+                                abort(400, message="Incorrect Value Field...")
                         else:
-                            abort(400, message="Incorrect Specified Endpoint...")
-                    else:
-                        report = exists[0]
-                        index = exists[1]
-                        if time_series_type == "confirmed":
-                            report.confirmed = row[attribute]
-                            TimeSeriesDB[index] = report
-                        elif time_series_type == "deaths":
-                            report.deaths = row[attribute]
-                            TimeSeriesDB[index] = report
-                        elif time_series_type == "recovered":
-                            report.recovered = row[attribute]
-                            TimeSeriesDB[index] = report
-                        if report.confirmed is not None and \
-                            report.deaths is not None and \
-                            report.recovered is not None:
-                            report.active = report.confirmed - report.deaths - report.recovered
-                            TimeSeriesDB[index] = report
+                            report = exists[0]
+                            index = exists[1]
+                            try:
+                                int(row[attribute])
+                                if time_series_type == "confirmed":
+                                    report.confirmed = int(row[attribute])
+                                    TimeSeriesDB[index] = report
+                                elif time_series_type == "deaths":
+                                    report.deaths = int(row[attribute])
+                                    TimeSeriesDB[index] = report
+                                elif time_series_type == "recovered":
+                                    report.recovered = int(row[attribute])
+                                    TimeSeriesDB[index] = report
+                                if report.confirmed is not None and \
+                                    report.deaths is not None and \
+                                    report.recovered is not None:
+                                    report.active = report.confirmed - report.deaths - report.recovered
+                                    TimeSeriesDB[index] = report
+                            except:
+                                abort(400, message="Incorrect Value Field...")
 
         return 201
     # except:
@@ -309,7 +316,7 @@ class DailyReports(Resource):
             input_key = row["Combined_Key"]
             try:
                 input_date = row["Last_Update"].split()[0].strip()
-                formatted_date = parse(input_date).date()
+                formatted_date = parse(input_date).date().strftime("%Y/%m/%d")
             except IndexError:
                 abort(400, message='Date not valid or formatted improperly') 
             except ParserError: 
@@ -321,8 +328,6 @@ class DailyReports(Resource):
             input_deaths = row["Deaths"]
             input_recovered = row["Recovered"]
             input_active = row["Active"]
-            if input_key is None:
-                abort(400, message='invalid key')
 
             dailyReport = DailyReportsModel(combined_key = input_key)
             dailyReport.date = formatted_date
@@ -369,6 +374,8 @@ class DailyReports(Resource):
         DailyReportsDB.clear()
         print('first daily report', DailyReportsDB[0])
 
+        return 200
+
 
 dailyreport_get_args = reqparse.RequestParser()
 dailyreport_get_args.add_argument("filetype", type=str, help="Return filetype.", required=True)
@@ -412,7 +419,7 @@ def query_daily_reports():
     if args['date']:
         for arg_date in args['date'].split(','):
             try:
-                input_date = parse(arg_date).date()
+                input_date = parse(arg_date).date().strftime("%Y/%m/%d")
             except ParserError: 
                 abort(400,  message='Date invalid') # TODO 
             result.extend(filter_date(input_date, DailyReportsDB))
@@ -458,11 +465,13 @@ if not os.path.exists(UPLOAD_DIRECTORY):
 def export_query(result, select_calls, file_name, filetype):
     final_result = {}
     i = 0
+    
     for model in result:
         model_dict = {"province_state": model.province_state, \
                     "country_region": model.country_region, \
                     "combined_key": model.combined_key, \
                     "date":model.date}
+ 
 
         if 'confirmed' in select_calls:
             model_dict["confirmed"] = model.confirmed
@@ -489,9 +498,11 @@ def export_query(result, select_calls, file_name, filetype):
     
     data = final_result
 
+
     print("exporting")
     if filetype == "json":
         file_type = '.json'
+        print(data)
         with open(file_path + file_name + file_type, 'w') as jsonfile:
             json.dump(data, jsonfile)
         # And then we write a final newline to the end of the file 

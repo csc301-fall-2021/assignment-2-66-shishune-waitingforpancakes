@@ -29,13 +29,13 @@ Design
         They:
         - must enter the type of file they want the results to be put into (either csv or json)
         - may specify True or False for confirmed, deaths, recovered, and active where True indicates that they want to see that column in the result and False indicates they do not. 
-        - may specify as many province_state, country_region, and combined_key and they will all be appended to a list and queried for the result. 
-        - may specify both the start date and end date with a string formatted 'month/day/year' for looking a specific day or time period. 
+        - may specify one province_state, country_region, and combined_key as a string or a list of them. 
+        - may specify both the start date and end date with a string formatted 'month/day/year' for looking a specific day or time period. It will not work if only one is given.
         Note that:
         - All dates, even column dates must be specified as a string formatted 'month/day/year'
         - If no or one date is missing, all dates will be considered.
         - If there are no Country/Region or combined keys specified then all countries/regions and provinces/states will be considered. For example, if data = {"filetype":"json"}.
-        - We also assume that we query all queries for Province/State and all queries for Country/Region separately. If one wants to query Province/State and Country/Region, then they must use a combined key which is a Province/State and Country/Region in this order with no spaces or characters in between. Ex. "OntarioCanada"
+        - We also assume that we include all queries where there is a certain Province/State and all queries where there is a certain Country/Region (ex. {"filetype":"csv", "province_state": "Ontario", "country_region":["Russia", "China"]} will include all queries from Russia, China, and countries with Ontario as a province). If one wants to query Province/State and Country/Region, then they must use a combined key which is a Province/State and Country/Region in this order with no spaces or characters in between. Ex. "OntarioCanada"
         - Names are case sensitive
     - For Daily Report queries, the user must submit data through requests. They:
         - must enter the type of file they want the results to be put into (either csv or json)
@@ -46,7 +46,7 @@ Design
             - "combined_key": For global daily reports, this is the province/state and country/region. For US daily reports, this is the city, the province/state and country/region. For example: "Kerala, India'. Note that each combined key must be put in single quotations. Therefore, for several combined key, it would look like this: "combined_key":"'Kerala, India','Luxembourg, Belgium'"
             - "province_state": This is the province or state of the daily report. 
             - "country_region": This is the country or region of the daily report. 
-            - "date": This is the date of the daily report. The format is "yyyy-mm-dd", 
+            - "date": This is the date of the daily report. The format is "yyyy/mm/dd", 
         - can specify what type of data they would like. These keys take in booleans, and where True will include the attribute in the result, and False will not. All of these attributes are optional.
             - "confirmed"
             - "recovered"
@@ -88,6 +88,7 @@ Design
             - Missing cell values (no keys, no dates, no country/province, no confirmed/deaths/active/recovered)
             - Poorly formatted date, illegal date
             - Properly formatted file
+            - Update data for information already posted
         - GET:
             - Query all data for deaths, confirmed, recovered, and active
             - Query all data for one of each; deaths, confirmed, recovered, and active
