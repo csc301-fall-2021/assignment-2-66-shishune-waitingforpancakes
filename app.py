@@ -85,21 +85,21 @@ def filter_key(key, db):
     query = []
     for report in db:
         if report.combined_key == key:
-            query.add(report)
+            query.append(report)
     return query
 
 def filter_date(date, db):
     query = []
     for report in db:
         if report.date == date:
-            query.add(report)
+            query.append(report)
     return query
 
 def filter_country(country, db):
     query = []
     for report in db:
         if report.country_region == country:
-            query.add(report)
+            query.append(report)
     return query
 
 
@@ -309,15 +309,20 @@ class DailyReports(Resource):
             input_key = row["Combined_Key"]
             try:
                 input_date = row["Last_Update"].split()[0].strip()
+                formatted_date = parse(input_date).date()
             except IndexError:
                 abort(400, message='Date not valid or formatted improperly') 
-            formatted_date = parse(input_date).date()
+            except ParserError: 
+                abort(400,  message='Date invalid') # TODO 
+            
             input_prov = row["Province_State"]
             input_country = row["Country_Region"]
             input_confirmed = row["Confirmed"]
             input_deaths = row["Deaths"]
             input_recovered = row["Recovered"]
             input_active = row["Active"]
+            if input_key is None:
+                abort(400, message='invalid key')
 
             dailyReport = DailyReportsModel(combined_key = input_key)
             dailyReport.date = formatted_date
@@ -357,11 +362,12 @@ class DailyReports(Resource):
 
                     DailyReportsDB[index] = result_report
 
-        return 200 # successful
+        return 201 # successful
 
     def delete(self):
         print("Goodbye Daily Reports!!!")
-        DailyReportsDB = []
+        DailyReportsDB.clear()
+        print('first daily report', DailyReportsDB[0])
 
 
 dailyreport_get_args = reqparse.RequestParser()
@@ -411,6 +417,7 @@ def query_daily_reports():
                 abort(400,  message='Date invalid') # TODO 
             result.extend(filter_date(input_date, DailyReportsDB))
         
+    result = set(result)
 
     select_calls = {}
     if args['confirmed']:
@@ -459,15 +466,23 @@ def export_query(result, select_calls, file_name, filetype):
 
         if 'confirmed' in select_calls:
             model_dict["confirmed"] = model.confirmed
+            if model.confirmed is None:
+                model_dict["confirmed"] = ""
  
         if  'deaths' in select_calls:
             model_dict["deaths"] = model.deaths
+            if model.deaths is None:
+                model_dict["deaths"] = ""
             
         if 'recovered' in select_calls:
             model_dict["recovered"] = model.recovered
+            if model.recovered is None:
+                model_dict["recovered"] = ""
 
         if 'active' in select_calls:
-            model_dict["active"] = model.deaths
+            model_dict["active"] = model.active
+            if model.active is None:
+                model_dict["active"] = ""
 
         final_result[i] = model_dict
         i += 1
@@ -506,15 +521,15 @@ def export_query(result, select_calls, file_name, filetype):
     else:
         abort(404, message="File type not available. Must be csv or json")  
 
-@app.route('/create/', methods=['POST'])
-def create_db():
-    TimeSeriesDB = []
-    DailyReportsDB = []
+# @app.route('/create/', methods=['POST'])
+# def create_db():
+#     TimeSeriesDB = []
+#     DailyReportsDB = []
 
-@app.route('/delete/', methods=['DELETE'])
-def delete_db():
-    TimeSeriesDB = []
-    DailyReportsDB = []
+# @app.route('/delete/', methods=['DELETE'])
+# def delete_db():
+#     TimeSeriesDB = []
+#     DailyReportsDB = []
 
 # Register resources
 api.add_resource(TimeSeries, "/time_series/<string:time_series_type>")

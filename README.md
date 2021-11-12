@@ -10,14 +10,15 @@ Pair Programming
 - Pair programming was helpful in understanding eachother's code as well. This enabled understanding the implementation of certain features that the other would then have to do for the other file type. Grace completed the Time Series features and Eryka completed the Daily Report features. Understanding the problems that one person faced allowed for the other to avoid the same mistakes, as well thoroughly understand the logic of the implementation, pair programming forces us to work and solve problems together. 
 
 Design
-- We decided to have separate database relation and endpoints for data files in the Time Series format and files in the Daily Reports format (there are separate endpoints for querying as well). This reduces coupling in the code because the post and get methods of Time Series and Daily Reports do not query or store information in the same table. This will also make it easier if we want to alter the format of how Time Series or Daily Reports is stored or received in the future. Furthermore, there is high cohesion in our classes, the methods of Time Series only alter the Time Series relation and the methods of Daily Reports only alter the Daily Reports relation. 
+- We decided to have separate ~~database relations~~ lists and endpoints for data files in the Time Series format and files in the Daily Reports format (there are separate endpoints for querying as well). This reduces coupling in the code because the post and get methods of Time Series and Daily Reports do not query or store information in the same table. This will also make it easier if we want to alter the format of how Time Series or Daily Reports is stored or received in the future. Furthermore, there is high cohesion in our classes, the methods of Time Series only alter the Time Series relation and the methods of Daily Reports only alter the Daily Reports relation. 
+- Note: Due to issues in deployment, we changed out database relations into lists. Instead of creating functions that were specific to either the Time Series or Daily Reports lists, we made functions that took in a list and used a key to filter. This allowed for cleaner coding, and reduced the need for code repetition. 
 
  API Documentation:
  - To send a request with a csv file directly to the API, the TA must...
     - Open the csv file for reading and pass it in as an argument for the data field of posting.
-    - To access the Daily Reports endpoint use "http://127.0.0.1:5000/daily_reports/" as an argument for the url field of posting.
-    - To access the Time Series endpoint use "http://127.0.0.1:5000/time_series/" plus either "confirmed", "deaths", "recovered" (for the different types of time series) as an argument for the url field of posting.
-    - Ex. requests.post("http://127.0.0.1:5000/time_series/confirmed", 
+    - To access the Daily Reports endpoint use "https://covid-301-api.herokuapp.com/daily_reports/" as an argument for the url field of posting.
+    - To access the Time Series endpoint use "https://covid-301-api.herokuapp.com/time_series/" plus either "confirmed", "deaths", "recovered" (for the different types of time series) as an argument for the url field of posting.
+    - Ex. requests.post("https://covid-301-api.herokuapp.com/time_series/confirmed", 
         data=open(local_file_to_send, "r"))
  - We combine adding and updating in "plain idempotent post requests."
  - With regards to querying...
@@ -34,7 +35,8 @@ Design
         - All dates, even column dates must be specified as a string formatted 'month/day/year'
         - If no or one date is missing, all dates will be considered.
         - If there are no Country/Region or combined keys specified then all countries/regions and provinces/states will be considered. For example, if data = {"filetype":"json"}.
-        - We also assume that Province/State does not make sense without Country/Region so we will be querying for a report to have both Province/State and Country/Region.
+        - We also assume that we query all queries for Province/State and all queries for Country/Region separately. If one wants to query Province/State and Country/Region, then they must use a combined key which is a Province/State and Country/Region in this order with no spaces or characters in between. Ex. "OntarioCanada"
+        - Names are case sensitive
     - For Daily Report queries, the user must submit data through requests. They:
         - must enter the type of file they want the results to be put into (either csv or json)
             - example: "filetype":"csv"
@@ -69,21 +71,33 @@ Design
             - Query all data for each of deaths, confirmed, recovered, and active
             - Query for one day
             - Query for multiple days
-            - Query one combined keys
-            - Query many combined keys
-            - Query one country/region, no province/state specification
-            - Query many country/region, no province/state specification
-            - Query many countries/regions, no province/state specification
-            - Query one provinces/states, no country/region specification
-            - Query many countries/regions with one province/state specification
-            - Query many countries/regions with many province/state specification
+            - Query one combined_key
+            - Query many combined_key
+            - Query one country/region
+            - Query many country/region
+            - Query one province/state
+            - Query many province/state
             - Query for json and csv format output
             - Query for one missing date time (either start_date or end_date)
             - Query with no countries/regions, provinces/states, combined_keys specified
             - Query with no time period specified
     - Daily Reports
         - POST:
-            - 
+            - Missing column names (no Province/State column, no Country/Region column)
+            - Incorrect column names (Long_ instead of Long, improper date, poorly formatted date)
+            - Missing cell values (no keys, no dates, no country/province, no confirmed/deaths/active/recovered)
         - GET:
-            - 
+            - Query all data for deaths, confirmed, recovered, and active
+            - Query all data for one of each; deaths, confirmed, recovered, and active
+            - Query all data with no count data
+            - Query for one day
+            - Query one combined_key
+            - Query many combined_key
+            - Query one country/region
+            - Query many country/region
+            - Query one province/state
+            - Query many province/state
+            - Query for json and csv format output
+            - Query with no countries/regions, provinces/states, combined_keys or date specified
+
     
