@@ -9,6 +9,10 @@ from dateutil.parser import ParserError, parse
 app = Flask(__name__)
 api = Api(app)
 
+@app.route('/', methods=['GET'])
+def index():
+    return 'By Grace and Eryka!'
+
 # ENV = 'dev'
 
 # if ENV == 'dev':
