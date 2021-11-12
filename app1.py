@@ -2,7 +2,6 @@
 import datetime, csv, json, os, io, pandas as pd
 from flask import Flask, jsonify, request, send_from_directory
 from flask_restful import Api, Resource, reqparse, abort, fields, marshal_with
-from flask_sqlalchemy import SQLAlchemy
 from dateutil.parser import ParserError, parse
 
 # Configure app, API and database
