@@ -2,36 +2,46 @@
 import datetime, csv, json, os, io, pandas as pd
 from flask import Flask, jsonify, request, send_from_directory
 from flask_restful import Api, Resource, reqparse, abort, fields, marshal_with
-from flask_sqlalchemy import SQLAlchemy
 from dateutil.parser import ParserError, parse
 
 # Configure app, API and database
 app = Flask(__name__)
 api = Api(app)
 
-ENV = 'prod'
+@app.route('/', methods=['GET'])
+def index():
+    return 'By Grace and Eryka!'
 
-if ENV == 'dev':
-    app.debug = True
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
-else:
-    app.debug = False
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'postgres://hxbliqhycjirgb:7a3f47c7cc57c32707ad2e4f26aaf11c2dac716d2e9a20ebab1f4e13c88efee4@ec2-107-20-127-127.compute-1.amazonaws.com:5432/de9htre82pv157'
+# ENV = 'dev'
 
-db = SQLAlchemy(app)
+# if ENV == 'dev':
+#     app.debug = True
+#     app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql:///database.db'
+# else:
+#     app.debug = False
+#     app.config['SQLALCHEMY_DATABASE_URI'] = 'postgres://hxbliqhycjirgb:7a3f47c7cc57c32707ad2e4f26aaf11c2dac716d2e9a20ebab1f4e13c88efee4@ec2-107-20-127-127.compute-1.amazonaws.com:5432/de9htre82pv157'
+
+# db = SQLAlchemy(app)
 
 encoding = 'utf-8' 
 
+TimeSeriesDB = []
+DailyReportsDB = []
+
 # Database tables
-class TimeSeriesModel(db.Model):
-    combined_key = db.Column(db.String(100), primary_key=True)  
-    province_state = db.Column(db.String(100), nullable=True)
-    country_region = db.Column(db.String(100))
-    date = db.Column(db.String(100), primary_key=True)
-    confirmed = db.Column(db.Integer, nullable=True)
-    deaths = db.Column(db.Integer, nullable=True)
-    recovered = db.Column(db.Integer, nullable=True)
-    active = db.Column(db.Integer, nullable=True)
+class TimeSeriesModel():
+    combined_key = ""  
+    province_state = ""
+    country_region = ""
+    date = None
+    confirmed = None
+    deaths = None
+    recovered = None
+    active = None
+
+    def __init__(self, combined_key, date) -> None:
+        self.combined_key = combined_key 
+        self.date = date
 
     def __repr__(self):
         return f"TimeSeries(Province/State = {self.province_state}, \
@@ -42,17 +52,19 @@ class TimeSeriesModel(db.Model):
             Recovered = {self.recovered}, \
             Active = {self.active})"
 
-class DailyReportsModel(db.Model):
-    combined_key = db.Column(db.String(100), primary_key=True)  
-    # note: combined key should be province and country, 
-    # so remove admin2[city] for daily reports..?
-    province_state = db.Column(db.String(100))
-    country_region = db.Column(db.String(100), nullable=False)
-    date = db.Column(db.String(100), primary_key=True)
-    confirmed = db.Column(db.Integer, nullable=False)
-    deaths = db.Column(db.Integer, nullable=False)
-    recovered = db.Column(db.Integer, nullable=False)
-    active = db.Column(db.Integer, nullable=False)
+class DailyReportsModel():
+    combined_key = str  
+    province_state = str
+    country_region = str
+    date = None
+    confirmed = int
+    deaths = int
+    recovered = int
+    active = int
+
+    def __init__(self, combined_key) -> None:
+        self.combined_key = combined_key  
+
 
     def __repr__(self):
         return f"DailyReport(province/state = {self.province_state}, \
@@ -60,6 +72,43 @@ class DailyReportsModel(db.Model):
             date = {self.date}, \
             confirmed = {self.confirmed}, deaths = {self.deaths},\
             recovered = {self.recovered}, active = {self.active})"
+
+def find_key_date(key, date, db):
+    i = 0
+    for report in db:
+        if report.combined_key == key and report.date == date:
+            return report, i
+        i += 1
+    return None
+
+def filter_key(key, db):
+    query = []
+    for report in db:
+        if report.combined_key == key:
+            query.add(report)
+    return query
+
+def filter_date(date, db):
+    query = []
+    for report in db:
+        if report.date == date:
+            query.add(report)
+    return query
+
+def filter_country(country, db):
+    query = []
+    for report in db:
+        if report.country_region == country:
+            query.add(report)
+    return query
+
+
+def filter_province(province, db):
+    query = []
+    for report in db:
+        if report.province_state == province:
+            query.add(report)
+    return query
 
 class TimeSeries(Resource):
     def post(self, time_series_type):
@@ -92,51 +141,47 @@ class TimeSeries(Resource):
                         abort(400, message="File includes an ill-named column or an improper date")
 
                     # Check whether we are creating a new resource or updating an existing resource
-                    exists = TimeSeriesModel.query.filter_by(combined_key=province_state + country_region, date=attribute).first()
-                    if exists is None:           
+                    exists = find_key_date(province_state + country_region, attribute, TimeSeriesDB) 
+
+                    if exists is None:     
+                        report = TimeSeriesModel(province_state + country_region, attribute)
+                        report.province_state = province_state
+                        report.country_region = country_region
                         if time_series_type == "confirmed":
-                            report = TimeSeriesModel(combined_key = province_state + country_region, \
-                                                    province_state = province_state, \
-                                                    country_region = country_region, \
-                                                    date = attribute,\
-                                                    confirmed = row[attribute], \
-                                                    active = 0)
-                            db.session.add(report)
+                            report.confirmed = row[attribute]
+                            report.active = 0
+                            TimeSeriesDB.append(report)
                         elif time_series_type == "deaths":
-                            report = TimeSeriesModel(combined_key = province_state + country_region, \
-                                                    province_state = province_state, \
-                                                    country_region = country_region, \
-                                                    date = attribute,\
-                                                    deaths = row[attribute], \
-                                                    active = 0)
-                            db.session.add(report)
+                            report.deaths = row[attribute]
+                            report.active = 0
+                            TimeSeriesDB.append(report)
                         elif time_series_type == "recovered":
-                            report = TimeSeriesModel(combined_key = province_state + country_region, \
-                                                    province_state = province_state, \
-                                                    country_region = country_region, \
-                                                    date = attribute,\
-                                                    recovered = row[attribute], \
-                                                    active = 0)
-                            db.session.add(report)
+                            report.recovered = row[attribute]
+                            report.active = 0
+                            TimeSeriesDB.append(report)
                         else:
                             abort(400, message="Incorrect Specified Endpoint...")
                     else:
+                        report = exists[0]
+                        index = exists[1]
                         if time_series_type == "confirmed":
-                            exists.confirmed = row[attribute]
+                            report.confirmed = row[attribute]
+                            TimeSeriesDB[index] = report
                         elif time_series_type == "deaths":
-                            exists.deaths = row[attribute]
+                            report.deaths = row[attribute]
+                            TimeSeriesDB[index] = report
                         elif time_series_type == "recovered":
-                            exists.recovered = row[attribute]
-                        if exists.confirmed is not None and \
-                            exists.deaths is not None and \
-                            exists.recovered is not None:
-                            exists.active = exists.confirmed - exists.deaths - exists.recovered
+                            report.recovered = row[attribute]
+                            TimeSeriesDB[index] = report
+                        if report.confirmed is not None and \
+                            report.deaths is not None and \
+                            report.recovered is not None:
+                            report.active = report.confirmed - report.deaths - report.recovered
+                            TimeSeriesDB[index] = report
 
-        try:
-            db.session.commit()
-            return 201 # successful
-        except:
-            abort(500, message="Could not add csv file content...")
+        return 201
+    # except:
+    #     abort(500, message="Could not add csv file content...")
 
 # Automatically parses through the request being sent and ensures it matches the guidelines
 time_series_args = reqparse.RequestParser()
@@ -160,22 +205,24 @@ def time_series_query():
     if not args['combined_key'] and not args['province_state'] and  \
         not args['country_region']:
         try:
-            places = TimeSeriesModel.query.all()
+            places = TimeSeriesDB
         except:
             abort(404, message="No data found...")
         
     # Find queries with every combination of country/region and province/state
+    # TODO I HAVE UNNESTED YOUR CODE!!! @GRACE
     if args['country_region'] is not None:
         for country in args['country_region']:
-            if args['province_state'] is not None:
-                for province in args['province_state']:
-                    places = set(places).union(set(TimeSeriesModel.query.filter_by(country_region=country, province_state=province).all()))
-            places = set(places).union(set(TimeSeriesModel.query.filter_by(country_region=country).all()))
+            places.extend(filter_country(country, TimeSeriesDB))
+
+    if args['province_state'] is not None:
+        for province in args['province_state']:
+            places.extend(filter_province(province, TimeSeriesDB))
 
     # Find queries with combined_key
     if args['combined_key'] is not None:
         for key in args['combined_key']:
-            places = set(places).union(set(TimeSeriesModel.query.filter_by(combined_key=key).all()))
+            places.extend(filter_key(key, TimeSeriesDB))
         
     result = places
 
@@ -193,14 +240,15 @@ def time_series_query():
             abort(400, message="Dates formatted incorrectly or improper date")
         if start_date > end_date:
             abort(403, message="Cannot have a negative time span")
-        for row in TimeSeriesModel.query.all():
+        for row in TimeSeriesDB:
             row_date = row.date.split('/')
             row_month, row_day, row_year = int(row_date[0]), int(row_date[1]), int("20"+row_date[2])
             if start_date <= datetime.date(row_year, row_month, row_day) and \
                 datetime.date(row_year, row_month, row_day) <= end_date:
                 timespan = set(timespan).union(set([row]))
         result = set(result).intersection(set(timespan))
-
+    
+    result = set(result)
     # Select specified columns
     select_calls = {}
     
@@ -268,56 +316,49 @@ class DailyReports(Resource):
             input_recovered = row["Recovered"]
             input_active = row["Active"]
 
-            dailyReport = DailyReportsModel(combined_key = input_key,
-                date = formatted_date,
-                province_state = input_prov,
-                country_region = input_country,
-                confirmed = input_confirmed,
-                deaths = input_deaths,
-                recovered = input_recovered,
-                active = input_active)
+            dailyReport = DailyReportsModel(combined_key = input_key)
+            dailyReport.date = formatted_date
+            dailyReport.province_state = input_prov
+            dailyReport.country_region = input_country
+            dailyReport.confirmed = input_confirmed
+            dailyReport.deaths = input_deaths
+            dailyReport.recovered = input_recovered
+            dailyReport.active = input_active
             
             # you want to check if this report is in the database according to combined key and date
             # if it is not: 
             if attrNotNull(dailyReport):
-                result = DailyReportsModel.query.filter_by(combined_key=dailyReport.combined_key,\
-                    date = dailyReport.date).first()
+                result = find_key_date(dailyReport.combined_key, dailyReport.date, DailyReportsDB)
+                
                 # print("result:", result)
                 if result is None: 
-                    try: 
-                        # print("We are adding the daily report!")
-                        db.session.add(dailyReport)
-                        # print(dailyReport)
-                    except sqlite3.connector.IntegrityError:
-                        return 'This already exists!- Integrity Error'
-                    except orm_exc.FlushError:
-                        return 'This already exists!- Conflict Error'
+                    DailyReportsDB.append(dailyReport)
+
                 else:
                     # update!
-                    print("Update:", result.combined_key, result.date)
+                    result_report = result[0]
+                    index = result[1]
+                    print("Update:", result_report.combined_key, result_report.date)
                     
-                    if result.confirmed != dailyReport.confirmed:
-                        result.confirmed = dailyReport.confirmed  
+                    if result_report.confirmed != dailyReport.confirmed:
+                        result_report.confirmed = dailyReport.confirmed  
                           
-                    if result.deaths != dailyReport.deaths:
-                         result.deaths = dailyReport.deaths
+                    if result_report.deaths != dailyReport.deaths:
+                         result_report.deaths = dailyReport.deaths
 
-                    if result.recovered != dailyReport.recovered:
-                        result.recovered = dailyReport.recovered
+                    if result_report.recovered != dailyReport.recovered:
+                        result_report.recovered = dailyReport.recovered
 
-                    if result.active != dailyReport.active:
-                        result.active = dailyReport.active
+                    if result_report.active != dailyReport.active:
+                        result_report.active = dailyReport.active
 
-        try:
-            db.session.commit()
-        except:
-            return 400, 'Could not commit'
+                    DailyReportsDB[index] = result_report
+
         return 200 # successful
 
     def delete(self):
         print("Goodbye Daily Reports!!!")
-        db.session.query(DailyReportsModel).delete() 
-        db.session.commit()
+        DailyReportsDB = []
 
 
 dailyreport_get_args = reqparse.RequestParser()
@@ -342,22 +383,22 @@ def query_daily_reports():
     if not args['combined_key'] and not args['province_state'] and  \
         not args['country_region'] and not args['date']:
         print("You asked for everything")
-        result = DailyReportsModel.query.all()
+        result = DailyReportsDB.copy()
 
     if args['combined_key']:
         for arg_key in args['combined_key'].split("'"):
             arg_key = arg_key.replace("\"", "").lstrip().rstrip()
-            result = set(result).union(DailyReportsModel.query.filter_by(combined_key=arg_key).all())
+            result.extend(filter_key(arg_key, DailyReportsDB))
 
     if args['province_state']:
         for arg_prov in args['province_state'].split(','):
             arg_prov = arg_prov.lstrip().rstrip()
-            result = set(result).union(DailyReportsModel.query.filter_by(province_state=arg_prov))
+            result.extend(filter_province(arg_prov, DailyReportsDB))
 
     if args['country_region']:
         for arg_country in args['country_region'].split(','):
             arg_country = arg_country.lstrip().rstrip()            
-            result = set(result).union(DailyReportsModel.query.filter_by(country_region=arg_country).all())
+            result.extend(filter_country(arg_country, DailyReportsDB))
     
     if args['date']:
         for arg_date in args['date'].split(','):
@@ -365,7 +406,7 @@ def query_daily_reports():
                 input_date = parse(arg_date).date()
             except ParserError: 
                 abort(400,  message='Date invalid') # TODO 
-            result = set(result).union(DailyReportsModel.query.filter_by(date=input_date).all())
+            result.extend(filter_date(input_date, DailyReportsDB))
         
 
     select_calls = {}
@@ -464,11 +505,13 @@ def export_query(result, select_calls, file_name, filetype):
 
 @app.route('/create/', methods=['POST'])
 def create_db():
-    db.create_all()
+    TimeSeriesDB = []
+    DailyReportsDB = []
 
 @app.route('/delete/', methods=['DELETE'])
 def delete_db():
-    db.drop_all()
+    TimeSeriesDB = []
+    DailyReportsDB = []
 
 # Register resources
 api.add_resource(TimeSeries, "/time_series/<string:time_series_type>")
