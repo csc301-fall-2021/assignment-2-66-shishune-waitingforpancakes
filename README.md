@@ -2,6 +2,7 @@
 
 Note: This program was mostly written with a live share so commits may be lacking but
 equal coding was done.
+Note 2: Our programming can take large datasets. However, due to our storage and retrieval system, querying may take a long time and Heroku may cut off queries that take too long.
 
 Pair Programming
 - In our first challenge, Eryka was confused on how to post a csv file. In this scenario, Eryka was driver while Grace was the navigator. Here, Eryka watched Grace code daily_reports_post.py 
@@ -60,7 +61,7 @@ Design
             "active": False}
 
 
-- Our test cases include...
+- For testing, we made custom datasets and used a path on our local computer. Our test cases include...
     - Time Series:
         - POST:
             - Insert a file of each time series type: confirmed, deaths, or recovered
@@ -81,6 +82,10 @@ Design
             - Query for one missing date time (either start_date or end_date)
             - Query with no countries/regions, provinces/states, combined_keys specified
             - Query with no time period specified
+            
+            ![unknown](https://user-images.githubusercontent.com/38295184/141597977-0a92d3e2-09aa-4096-ac94-efc6e36e1a0e.png)
+
+
     - Daily Reports
         - POST:
             - Improperly formatted column headers
@@ -102,5 +107,7 @@ Design
             - Query many province/state
             - Query for json and csv format output
             - Query with no countries/regions, provinces/states, combined_keys or date specified
+            ![unknown (1)](https://user-images.githubusercontent.com/38295184/141598620-624ccbc1-d876-4170-a83b-6141d89aef09.png)
+
 
     
